@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 
 const User = require("../models/User");
+const Wallet = require("../models/Wallet");
 
 const {
   generateAccessToken,
@@ -35,6 +36,15 @@ const register = async (req, res) => {
       email,
       password: hashedPassword,
     });
+
+    // Automatically initialize active wallet for newly registered user
+    try {
+      await Wallet.create({
+        user: user._id,
+      });
+    } catch (walletErr) {
+      console.warn("Wallet creation on registration note:", walletErr.message);
+    }
 
     return res.status(201).json({
       success: true,
@@ -218,5 +228,5 @@ module.exports = {
   getMe,
   refreshAccessToken,
   logout,
-  adminTest
+  adminTest,
 };

@@ -3,15 +3,6 @@ const mongoose = require("mongoose");
 
 const Wallet = require("../models/Wallet");
 const Packet = require("../models/packet");
-console.log(
-  "PACKET MODEL FILE:",
-  require.resolve("../models/packet")
-);
-
-console.log(
-  "SIGNATURE FIELD:",
-  Packet.schema.path("signature")
-);
 
 const { encrypt } = require("../utils/encryption");
 const { signPacket } = require("../utils/signature");
@@ -74,7 +65,6 @@ const createOfflinePacket = async (req, res) => {
     }
 
     const packetId = crypto.randomUUID();
-
     const idempotencyKey = crypto.randomUUID();
 
     // Encrypt payment information
@@ -93,26 +83,17 @@ const createOfflinePacket = async (req, res) => {
       amount: transferAmount,
       encryptedData,
     });
-console.log("SIGNATURE GENERATED:", signature);
 
-console.log(
-  "PACKET MODEL HAS SIGNATURE:",
-  Packet.schema.path("signature")
-);
     const packet = await Packet.create({
-
       packetId,
       sender: req.user.id,
       receiver: receiverId,
-
       amount: mongoose.Types.Decimal128.fromString(
         transferAmount.toFixed(2)
       ),
-
       encryptedData,
       signature,
       idempotencyKey,
-
       ttl,
       status: "pending",
       hopCount: 0,
@@ -121,7 +102,6 @@ console.log(
     return res.status(201).json({
       success: true,
       message: "Offline payment packet created",
-
       packet: {
         id: packet._id,
         packetId: packet.packetId,
@@ -142,6 +122,93 @@ console.log(
   }
 };
 
+const getPackets = async (req, res) => {
+  try {
+    const packets = await Packet.find({
+      $or: [
+        { sender: req.user.id },
+        { receiver: req.user.id },
+      ],
+    })
+      .populate("sender", "name email")
+      .populate("receiver", "name email")
+      .sort({ createdAt: -1 });
+
+    const formattedPackets = packets.map((p) => ({
+      id: p._id,
+      packetId: p.packetId,
+      sender: p.sender,
+      receiver: p.receiver,
+      amount: p.amount.toString(),
+      ttl: p.ttl,
+      hopCount: p.hopCount,
+      status: p.status,
+      idempotencyKey: p.idempotencyKey,
+      deliveredAt: p.deliveredAt,
+      createdAt: p.createdAt,
+    }));
+
+    return res.status(200).json({
+      success: true,
+      packets: formattedPackets,
+    });
+  } catch (error) {
+    console.error("Get packets error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error retrieving packets",
+    });
+  }
+};
+
+const getPacketById = async (req, res) => {
+  try {
+    const { packetId } = req.params;
+
+    const query = mongoose.isValidObjectId(packetId)
+      ? { $or: [{ packetId }, { _id: packetId }] }
+      : { packetId };
+
+    const packet = await Packet.findOne(query)
+      .populate("sender", "name email")
+      .populate("receiver", "name email");
+
+    if (!packet) {
+      return res.status(404).json({
+        success: false,
+        message: "Packet not found",
+      });
+    }
+
+    return res.status(200).json({
+      success: true,
+      packet: {
+        id: packet._id,
+        packetId: packet.packetId,
+        sender: packet.sender,
+        receiver: packet.receiver,
+        amount: packet.amount.toString(),
+        ttl: packet.ttl,
+        hopCount: packet.hopCount,
+        status: packet.status,
+        idempotencyKey: packet.idempotencyKey,
+        deliveredAt: packet.deliveredAt,
+        createdAt: packet.createdAt,
+      },
+    });
+  } catch (error) {
+    console.error("Get packet by id error:", error);
+
+    return res.status(500).json({
+      success: false,
+      message: "Server error retrieving packet",
+    });
+  }
+};
+
 module.exports = {
   createOfflinePacket,
+  getPackets,
+  getPacketById,
 };

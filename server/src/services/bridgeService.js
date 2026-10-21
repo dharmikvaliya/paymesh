@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+const User = require("../models/User");
 const Packet = require("../models/packet");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
@@ -38,10 +39,7 @@ const deliverPacket = async (packetId) => {
 
       // Check packet TTL
       if (packet.status === "expired" || packet.ttl <= 0) {
-        // Save expiry OUTSIDE the transaction
-        // so this status is not rolled back.
         packet.status = "expired";
-
         await packet.save();
 
         result = {
@@ -104,8 +102,8 @@ const deliverPacket = async (packetId) => {
         status: "active",
       }).session(session);
 
-      // Find receiver wallet
-      const receiverWallet = await Wallet.findOne({
+      // Find receiver wallet (auto-create if receiver user exists)
+      let receiverWallet = await Wallet.findOne({
         user: packet.receiver,
         status: "active",
       }).session(session);
@@ -115,7 +113,15 @@ const deliverPacket = async (packetId) => {
       }
 
       if (!receiverWallet) {
-        throw new Error("Receiver wallet not found");
+        const receiverUser = await User.findById(packet.receiver).session(session);
+        if (!receiverUser) {
+          throw new Error("Receiver wallet not found");
+        }
+        const createdWallets = await Wallet.create(
+          [{ user: packet.receiver }],
+          { session }
+        );
+        receiverWallet = createdWallets[0];
       }
 
       const amount = Number(packet.amount.toString());
@@ -187,4 +193,4 @@ const deliverPacket = async (packetId) => {
 
 module.exports = {
   deliverPacket,
-};  
+};

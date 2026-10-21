@@ -46,8 +46,8 @@ const reconcilePacket = async (packetId) => {
     };
   }
 
-  // Verify amount
-  // Compare numerically so "100.00" and "100" are considered equal.
+  // Verify amount using decimal-safe formatting (2 decimal places)
+  // Ensures "100.00" and "100" or slight floating deltas are accurately compared.
   const packetAmount = Number(packet.amount.toString());
   const transactionAmount = Number(transaction.amount.toString());
 
@@ -61,7 +61,7 @@ const reconcilePacket = async (packetId) => {
     };
   }
 
-  if (packetAmount !== transactionAmount) {
+  if (packetAmount.toFixed(2) !== transactionAmount.toFixed(2)) {
     return {
       success: false,
       reconciled: false,

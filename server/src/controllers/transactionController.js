@@ -1,5 +1,6 @@
 const mongoose = require("mongoose");
 
+const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
 
@@ -85,7 +86,7 @@ const sendMoney = async (req, res) => {
       // 3. Find receiver wallet
       // --------------------------------------------------
 
-      const receiverWallet = await Wallet.findOne({
+      let receiverWallet = await Wallet.findOne({
         user: receiverId,
         status: "active",
       }).session(session);
@@ -95,7 +96,15 @@ const sendMoney = async (req, res) => {
       }
 
       if (!receiverWallet) {
-        throw new Error("Receiver wallet not found");
+        const receiverUser = await User.findById(receiverId).session(session);
+        if (!receiverUser) {
+          throw new Error("Receiver wallet not found");
+        }
+        const createdWallets = await Wallet.create(
+          [{ user: receiverId }],
+          { session }
+        );
+        receiverWallet = createdWallets[0];
       }
 
       // --------------------------------------------------

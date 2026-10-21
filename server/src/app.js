@@ -2,6 +2,7 @@ const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const morgan = require("morgan");
+const cookieParser = require("cookie-parser");
 
 const authRoutes = require("./routes/authRoutes");
 const walletRoutes = require("./routes/walletRoutes");
@@ -10,8 +11,6 @@ const packetRoutes = require("./routes/packetRoutes");
 const meshRoutes = require("./routes/meshRoutes");
 const bridgeRoutes = require("./routes/bridgeRoutes");
 const reconciliationRoutes = require("./routes/reconciliationRoutes");
-const cookieParser = require("cookie-parser");
-
 
 const app = express();
 
@@ -20,7 +19,7 @@ app.use(cookieParser());
 
 app.use(
   cors({
-    origin: "http://localhost:5173",
+    origin: process.env.CLIENT_URL || "http://localhost:5173",
     credentials: true,
   })
 );
@@ -43,11 +42,6 @@ app.use("/api/transactions", transactionRoutes);
 app.use("/api/packets", packetRoutes);
 app.use("/api/mesh", meshRoutes);
 app.use("/api/bridge", bridgeRoutes);
-
-
-app.use(
-  "/api/reconciliation",
-  reconciliationRoutes
-);
+app.use("/api/reconciliation", reconciliationRoutes);
 
 module.exports = app;
