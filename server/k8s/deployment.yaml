@@ -1,0 +1,23 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: paymesh-server
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: paymesh-server
+  template:
+    metadata:
+      labels:
+        app: paymesh-server
+    spec:
+      containers:
+        - name: paymesh-server
+          image: paymesh-server:latest
+          imagePullPolicy: Never
+          ports:
+            - containerPort: 5000
+          envFrom:
+            - secretRef:
+                name: paymesh-env
