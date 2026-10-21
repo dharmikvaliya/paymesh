@@ -1,4 +1,5 @@
 const Wallet = require("../models/Wallet");
+const { addMoney } = require("../utils/money");
 
 const getWallet = async (req, res) => {
   try {
@@ -33,14 +34,24 @@ const getWallet = async (req, res) => {
 
 const fundWallet = async (req, res) => {
   try {
-    const { userId, amount } = req.body;
+    const { amount, userId: clientUserId } = req.body;
 
-    if (!userId || !amount) {
+    if (!amount) {
       return res.status(400).json({
         success: false,
-        message: "User ID and amount are required",
+        message: "Amount is required",
       });
     }
+
+    // Security & Authorization: Never trust client-supplied user ID to fund arbitrary wallets
+    if (clientUserId && clientUserId !== req.user.id && req.user.role !== "admin") {
+      return res.status(403).json({
+        success: false,
+        message: "Forbidden: You cannot fund another user's wallet",
+      });
+    }
+
+    const targetUserId = (req.user.role === "admin" && clientUserId) ? clientUserId : req.user.id;
 
     const fundAmount = Number(amount);
 
@@ -52,21 +63,17 @@ const fundWallet = async (req, res) => {
     }
 
     let wallet = await Wallet.findOne({
-      user: userId,
+      user: targetUserId,
     });
 
     if (!wallet) {
       wallet = await Wallet.create({
-        user: userId,
+        user: targetUserId,
         balance: fundAmount.toFixed(2),
       });
     } else {
-      const currentBalance = Number(wallet.balance.toString());
-
-      wallet.balance = (
-        currentBalance + fundAmount
-      ).toFixed(2);
-
+      // Decimal-safe addition using integer cents
+      wallet.balance = addMoney(wallet.balance.toString(), fundAmount);
       await wallet.save();
     }
 

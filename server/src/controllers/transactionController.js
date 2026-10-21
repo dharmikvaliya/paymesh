@@ -3,6 +3,7 @@ const mongoose = require("mongoose");
 const User = require("../models/User");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
+const { addMoney, subtractMoney } = require("../utils/money");
 
 const sendMoney = async (req, res) => {
   const session = await mongoose.startSession();
@@ -120,26 +121,25 @@ const sendMoney = async (req, res) => {
       }
 
       // --------------------------------------------------
-      // 5. Calculate new balances
+      // 5. Calculate new balances using decimal-safe arithmetic
       // --------------------------------------------------
 
-      const newSenderBalance =
-        senderBalance - transferAmount;
-
-      const receiverBalance = Number(
-        receiverWallet.balance.toString()
+      const newSenderBalance = subtractMoney(
+        senderWallet.balance.toString(),
+        transferAmount
       );
 
-      const newReceiverBalance =
-        receiverBalance + transferAmount;
+      const newReceiverBalance = addMoney(
+        receiverWallet.balance.toString(),
+        transferAmount
+      );
 
       // --------------------------------------------------
       // 6. Update wallets
       // --------------------------------------------------
 
-      senderWallet.balance = newSenderBalance.toFixed(2);
-
-      receiverWallet.balance = newReceiverBalance.toFixed(2);
+      senderWallet.balance = newSenderBalance;
+      receiverWallet.balance = newReceiverBalance;
 
       await senderWallet.save({ session });
       await receiverWallet.save({ session });

@@ -6,9 +6,8 @@ export const walletService = {
     return response.data;
   },
 
-  async fundWallet(userId, amount) {
+  async fundWallet(amount) {
     const response = await api.post("/api/wallet/fund", {
-      userId,
       amount: Number(amount),
     });
     return response.data;

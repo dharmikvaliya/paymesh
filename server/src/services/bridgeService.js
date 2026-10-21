@@ -4,6 +4,7 @@ const User = require("../models/User");
 const Packet = require("../models/packet");
 const Wallet = require("../models/Wallet");
 const Transaction = require("../models/Transaction");
+const { addMoney, subtractMoney } = require("../utils/money");
 
 const { verifyPacket } = require("../utils/signature");
 
@@ -138,15 +139,16 @@ const deliverPacket = async (packetId) => {
         throw new Error("Insufficient balance");
       }
 
-      // Debit sender
-      senderWallet.balance = (
-        senderBalance - amount
-      ).toFixed(2);
+      // Decimal-safe debit sender & credit receiver using integer cents
+      senderWallet.balance = subtractMoney(
+        senderWallet.balance.toString(),
+        amount
+      );
 
-      // Credit receiver
-      receiverWallet.balance = (
-        Number(receiverWallet.balance.toString()) + amount
-      ).toFixed(2);
+      receiverWallet.balance = addMoney(
+        receiverWallet.balance.toString(),
+        amount
+      );
 
       await senderWallet.save({ session });
       await receiverWallet.save({ session });

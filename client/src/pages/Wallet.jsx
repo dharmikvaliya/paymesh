@@ -78,7 +78,7 @@ export const Wallet = () => {
 
     setFunding(true);
     try {
-      const res = await walletService.fundWallet(user?.id, num);
+      const res = await walletService.fundWallet(num);
       setFundSuccessMsg(`Successfully credited ₹${num.toFixed(2)} to your wallet.`);
       setFundAmount("");
       if (res?.wallet) {

@@ -6,6 +6,9 @@ require("dotenv").config({ path: `${__dirname}/../.env` });
 
 const app = require("../src/app");
 const connectDatabase = require("../src/config/database");
+const User = require("../src/models/User");
+const Wallet = require("../src/models/Wallet");
+const Transaction = require("../src/models/Transaction");
 const Packet = require("../src/models/packet");
 const { reconcilePacket } = require("../src/services/reconciliationService");
 
@@ -30,6 +33,26 @@ describe("PayMesh Integration Test Suite", () => {
   });
 
   after(async () => {
+    // Clean up test data completely so zero residual records remain in database
+    try {
+      const userIds = [testUser1?.id, testUser1?._id, testUser2?.id, testUser2?._id].filter(Boolean);
+      if (userIds.length > 0) {
+        await Promise.allSettled([
+          User.deleteMany({ _id: { $in: userIds } }),
+          Wallet.deleteMany({ user: { $in: userIds } }),
+          Transaction.deleteMany({
+            $or: [{ sender: { $in: userIds } }, { receiver: { $in: userIds } }],
+          }),
+          Packet.deleteMany({
+            $or: [{ sender: { $in: userIds } }, { receiver: { $in: userIds } }],
+          }),
+        ]);
+        console.log("Successfully cleaned up all integration test fixtures from database.");
+      }
+    } catch (cleanupErr) {
+      console.warn("Cleanup warning:", cleanupErr.message);
+    }
+
     if (server) {
       await new Promise((resolve) => server.close(resolve));
     }
@@ -44,7 +67,7 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(data.message, "PayMesh API is running");
   });
 
-  test("2. Authentication — Register, Login, Me, Refresh, and Logout", async () => {
+  test("2. Authentication — Register, Login, Me, Refresh Rotation, and Logout", async () => {
     const uniqueSuffix = Date.now().toString().slice(-6);
     const email1 = `sender_${uniqueSuffix}@paymesh.test`;
     const email2 = `receiver_${uniqueSuffix}@paymesh.test`;
@@ -94,7 +117,7 @@ describe("PayMesh Integration Test Suite", () => {
     assert.ok(loginData1.accessToken);
     token1 = loginData1.accessToken;
 
-    // Capture refresh cookie
+    // Capture initial refresh cookie
     const rawCookies = loginRes1.headers.get("set-cookie");
     assert.ok(rawCookies, "Refresh token cookie should be set by backend");
     refreshCookie1 = rawCookies.split(";")[0];
@@ -135,7 +158,7 @@ describe("PayMesh Integration Test Suite", () => {
     const unauthRes = await fetch(`${baseUrl}/api/auth/me`);
     assert.equal(unauthRes.status, 401);
 
-    // 2h. Refresh Access Token using Refresh Cookie
+    // 2h. Refresh Access Token using Refresh Cookie (and verify token rotation)
     const refreshRes = await fetch(`${baseUrl}/api/auth/refresh`, {
       method: "POST",
       headers: { Cookie: refreshCookie1 },
@@ -144,6 +167,9 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(refreshRes.status, 200);
     assert.equal(refreshData.success, true);
     assert.ok(refreshData.accessToken);
+
+    const rotatedCookie = refreshRes.headers.get("set-cookie");
+    assert.ok(rotatedCookie, "Backend should rotate refresh token cookie upon refresh");
 
     // 2i. Logout
     const logoutRes = await fetch(`${baseUrl}/api/auth/logout`, {
@@ -154,7 +180,7 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(logoutData.success, true);
   });
 
-  test("3. Wallet — Inspect & Fund Liquidity", async () => {
+  test("3. Wallet — Inspect, Fund Liquidity, and Ownership Authorization", async () => {
     // 3a. Get initial wallet for user 1
     const getWalletRes = await fetch(`${baseUrl}/api/wallet`, {
       headers: { Authorization: `Bearer ${token1}` },
@@ -165,7 +191,7 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(walletData.wallet.currency, "INR");
     assert.equal(walletData.wallet.status, "active");
 
-    // 3b. Fund wallet with 1,000 INR
+    // 3b. Fund wallet with 1,000 INR (caller's own wallet)
     const fundRes = await fetch(`${baseUrl}/api/wallet/fund`, {
       method: "POST",
       headers: {
@@ -173,7 +199,6 @@ describe("PayMesh Integration Test Suite", () => {
         Authorization: `Bearer ${token1}`,
       },
       body: JSON.stringify({
-        userId: testUser1.id,
         amount: 1000,
       }),
     });
@@ -181,6 +206,22 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(fundRes.status, 200);
     assert.equal(fundData.success, true);
     assert.ok(Number(fundData.wallet.balance) >= 1000);
+
+    // 3c. Payment Safety Audit: Attempt to fund another user's wallet with client-supplied userId
+    const exploitRes = await fetch(`${baseUrl}/api/wallet/fund`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${token1}`,
+      },
+      body: JSON.stringify({
+        userId: testUser2.id,
+        amount: 500,
+      }),
+    });
+    assert.equal(exploitRes.status, 403, "Backend must reject funding another user's wallet");
+    const exploitData = await exploitRes.json();
+    assert.equal(exploitData.success, false);
   });
 
   test("4. Direct Online Transfer & Idempotency", async () => {
@@ -336,7 +377,7 @@ describe("PayMesh Integration Test Suite", () => {
     assert.equal(postReconData.packet.idempotencyKey, postReconData.transaction.idempotencyKey);
   });
 
-  test("6. Reconciliation Mismatch Handling", async () => {
+  test("6. Reconciliation Mismatch Handling (Read-Only)", async () => {
     // 6a. Create an offline packet
     const createRes = await fetch(`${baseUrl}/api/packets/create`, {
       method: "POST",
