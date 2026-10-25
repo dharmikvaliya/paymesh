@@ -1,12 +1,23 @@
+# Dependencies
 node_modules/
+
+# Environment files
 .env
+.env.*
+.env.local
+*.env
+!.env.example
+
+# Build and test outputs
 dist/
+dist-ssr/
 build/
 coverage/
+screenshots/
 *.log
 
+# System & IDE files
 .DS_Store
+Thumbs.db
 .vscode/
 .idea/
-
-screenshots/
